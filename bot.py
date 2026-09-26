@@ -43,7 +43,7 @@ CONTEST_ROLE_ID = 1553439023576653906
 CONTEST_REACTION = "🎉"
 
 # Konkursų duomenų failas
-CONTESTS_FILE = "konkursai.json"
+CONTESTS_FILE = "/app/data/konkursai.json"
 
 
 # =========================================================
