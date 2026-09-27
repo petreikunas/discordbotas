@@ -15,7 +15,7 @@ from discord.ext import commands
 # =========================================================
 
 # ĮKLIJUOK NAUJĄ TOKENĄ ČIA
-TOKEN = "MTU1MzQ0MjAyMDMyMjgzNjUzMA.G6V5jt.CE4qZoAaPvYNGiJKnB9ndyDX9KEhPM7nDcz_K8"
+TOKEN = "MTU1MzQ0MjAyMDMyMjgzNjUzMA.GkyXU7.zXNWXkJgnFkUCt7o0jEsDl7wZE6v860rIobZy4"
 
 # Speciali rolė administracinėms / testavimo / konkursų komandoms
 SPECIAL_ROLE_ID = 1553439023576653906
