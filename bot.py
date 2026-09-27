@@ -3,27 +3,19 @@ import json
 import os
 import random
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import discord
-from discord.ext import commands
 from discord import app_commands
-
-TOKEN = os.getenv("DISCORD_TOKEN")
-
-print("TOKEN EXISTUOJA:", bool(TOKEN))
-print("TOKEN ILGIS:", len(TOKEN) if TOKEN else 0)
-
-if not TOKEN:
-    raise ValueError("DISCORD_TOKEN nerastas!")
+from discord.ext import commands
 
 
 # =========================================================
 # NUSTATYMAI
 # =========================================================
 
-# ČIA ĮRAŠYK NAUJĄ BOTO TOKENĄ
-TOKEN = ""
+# ĮKLIJUOK NAUJĄ TOKENĄ ČIA
+TOKEN = "MTU1MzQ0MjAyMDMyMjgzNjUzMA.G6V5jt.CE4qZoAaPvYNGiJKnB9ndyDX9KEhPM7nDcz_K8"
 
 # Speciali rolė administracinėms / testavimo / konkursų komandoms
 SPECIAL_ROLE_ID = 1553439023576653906
@@ -33,7 +25,7 @@ WELCOME_CHANNEL_ID = 1553455176860307647
 
 # Verifikacija
 VERIFICATION_CHANNEL_ID = 1553460720447000667
-VERIFICATION_ROLE_ID = 1553451359943135394
+VERIFICATION_ROLE_ID = 1553439023576653906
 
 # Ticket sistema
 TICKET_PANEL_CHANNEL_ID = 1553454051461435484
@@ -45,8 +37,8 @@ CONTEST_CHANNEL_ID = 1553453857042997278
 CONTEST_ROLE_ID = 1553439023576653906
 CONTEST_REACTION = "🎉"
 
-# Konkursų duomenų failas
-CONTESTS_FILE = "/app/data/konkursai.json"
+# Konkursų duomenys
+CONTESTS_FILE = "konkursai.json"
 
 
 # =========================================================
@@ -63,8 +55,8 @@ bot = commands.Bot(
 )
 
 startup_done = False
-
 verification_message_id = None
+contest_task_started = False
 
 
 # =========================================================
@@ -75,7 +67,6 @@ def turi_role(
     member: discord.Member,
     role_id: int
 ) -> bool:
-
     return any(
         role.id == role_id
         for role in member.roles
@@ -85,7 +76,6 @@ def turi_role(
 def turi_specialia_role(
     member: discord.Member
 ) -> bool:
-
     return turi_role(
         member,
         SPECIAL_ROLE_ID
@@ -95,7 +85,6 @@ def turi_specialia_role(
 def turi_support_role(
     member: discord.Member
 ) -> bool:
-
     return turi_role(
         member,
         TICKET_SUPPORT_ROLE_ID
@@ -110,45 +99,30 @@ def turi_support_role(
 async def on_member_join(
     member: discord.Member
 ):
-
     channel = bot.get_channel(
         WELCOME_CHANNEL_ID
     )
 
     if channel is None:
-        print(
-            "❌ Nerastas welcome kanalas."
-        )
+        print("❌ Nerastas welcome kanalas.")
         return
 
-    # =====================================================
-    # KELINTAS NARYS SERveryje
-    # =====================================================
-
-    member_number = member.guild.member_count
-
-    # =====================================================
-    # WELCOME EMBED
-    # =====================================================
+    member_count = member.guild.member_count or 0
 
     embed = discord.Embed(
         title="🎉 NAUJAS NARYS!",
         description=(
             f"**Sveikas atvykęs į {member.guild.name}!** 👋\n\n"
             f"{member.mention}, labai smagu tave matyti "
-            "mūsų bendruomenėje! ❤️\n\n"
-            "📌 Prašome susipažinti su serverio taisyklėmis "
-            "ir mėgautis laiku mūsų serveryje."
+            "mūsų bendruomenėje! ❤️"
         ),
         color=discord.Color.blurple()
     )
 
-    # Avataras
     embed.set_thumbnail(
         url=member.display_avatar.url
     )
 
-    # Informacija
     embed.add_field(
         name="👤 Narys",
         value=member.mention,
@@ -156,8 +130,8 @@ async def on_member_join(
     )
 
     embed.add_field(
-        name="🔢 Narys pagal skaičių",
-        value=f"**#{member_number}**",
+        name="🔢 Narių serveryje",
+        value=f"**#{member_count}**",
         inline=True
     )
 
@@ -167,32 +141,13 @@ async def on_member_join(
         inline=False
     )
 
-    embed.add_field(
-        name="📅 Prisijungė",
-        value=(
-            f"<t:{int(member.joined_at.timestamp())}:F>"
-            if member.joined_at
-            else "Nežinoma"
-        ),
-        inline=False
-    )
-
-    # Serverio avataras / didesnė nuotrauka apačioje
-    if member.display_avatar:
-        embed.set_image(
-            url=member.display_avatar.url
-        )
-
-    # Footer
     embed.set_footer(
-        text=f"{member.guild.name} • Narys #{member_number}"
+        text=f"{member.guild.name} • Narys #{member_count}"
     )
 
-    # Timestamp
     embed.timestamp = discord.utils.utcnow()
 
     try:
-
         await channel.send(
             content=member.mention,
             embed=embed,
@@ -202,18 +157,15 @@ async def on_member_join(
         )
 
         print(
-            f"✅ Gražus welcome išsiųstas: {member}"
+            f"✅ Welcome išsiųstas: {member}"
         )
 
     except discord.Forbidden:
-
         print(
-            "❌ Botas neturi teisės rašyti "
-            "į welcome kanalą."
+            "❌ Botas neturi teisės rašyti į welcome kanalą."
         )
 
     except discord.HTTPException as error:
-
         print(
             f"❌ Welcome klaida: {error}"
         )
@@ -227,7 +179,6 @@ async def on_member_join(
 async def special_role_check(
     ctx: commands.Context
 ):
-
     if not isinstance(
         ctx.author,
         discord.Member
@@ -247,7 +198,6 @@ async def special_role_check(
 async def labas(
     ctx: commands.Context
 ):
-
     await ctx.send(
         "Labas! 👋"
     )
@@ -261,25 +211,63 @@ async def labas(
 async def testwelcome(
     ctx: commands.Context
 ):
-
     channel = bot.get_channel(
         WELCOME_CHANNEL_ID
     )
 
     if channel is None:
-
         await ctx.send(
-            "❌ Nerastas welcome kanalas. "
-            "Patikrink `WELCOME_CHANNEL_ID`."
+            "❌ Nerastas welcome kanalas."
         )
-
         return
 
-    try:
+    member_count = ctx.guild.member_count or 0
 
+    embed = discord.Embed(
+        title="🎉 NAUJAS NARYS!",
+        description=(
+            f"**Sveikas atvykęs į {ctx.guild.name}!** 👋\n\n"
+            f"{ctx.author.mention}, labai smagu tave matyti "
+            "mūsų bendruomenėje! ❤️"
+        ),
+        color=discord.Color.blurple()
+    )
+
+    embed.set_thumbnail(
+        url=ctx.author.display_avatar.url
+    )
+
+    embed.add_field(
+        name="👤 Narys",
+        value=ctx.author.mention,
+        inline=True
+    )
+
+    embed.add_field(
+        name="🔢 Narių serveryje",
+        value=f"**#{member_count}**",
+        inline=True
+    )
+
+    embed.add_field(
+        name="🆔 Vartotojo ID",
+        value=f"`{ctx.author.id}`",
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"{ctx.guild.name} • Narys #{member_count}"
+    )
+
+    embed.timestamp = discord.utils.utcnow()
+
+    try:
         await channel.send(
-            f"🎉 Sveikas atvykęs į serverį, "
-            f"{ctx.author.mention}! 👋"
+            content=ctx.author.mention,
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(
+                users=True
+            )
         )
 
         await ctx.send(
@@ -288,10 +276,8 @@ async def testwelcome(
         )
 
     except discord.Forbidden:
-
         await ctx.send(
-            "❌ Botas negali rašyti "
-            "į welcome kanalą."
+            "❌ Botas negali rašyti į welcome kanalą."
         )
 
 
@@ -304,7 +290,6 @@ async def on_command_error(
     ctx: commands.Context,
     error: commands.CommandError
 ):
-
     if isinstance(
         error,
         commands.CommandNotFound
@@ -315,14 +300,11 @@ async def on_command_error(
         error,
         commands.CheckFailure
     ):
-
         try:
-
             await ctx.send(
                 "❌ Neturi reikiamos specialios rolės.",
                 delete_after=5
             )
-
         except discord.HTTPException:
             pass
 
@@ -340,16 +322,14 @@ async def on_command_error(
 class ZinuteModal(
     discord.ui.Modal
 ):
-
     def __init__(self):
-
         super().__init__(
             title="📢 Sukurti Embed žinutę"
         )
 
     pavadinimas = discord.ui.TextInput(
         label="Embed pavadinimas",
-        placeholder="Pvz. 📢 Svarbus pranešimas",
+        placeholder="Pvz. 📢 Svarbi informacija",
         required=True,
         max_length=256
     )
@@ -380,7 +360,6 @@ class ZinuteModal(
         self,
         interaction: discord.Interaction
     ):
-
         embed = discord.Embed(
             title=self.pavadinimas.value,
             description=self.tekstas.value,
@@ -388,7 +367,6 @@ class ZinuteModal(
         )
 
         if self.footer.value.strip():
-
             embed.set_footer(
                 text=self.footer.value.strip()
             )
@@ -396,9 +374,7 @@ class ZinuteModal(
         tagas = self.tagas.value.strip()
 
         try:
-
             if tagas:
-
                 await interaction.channel.send(
                     content=tagas,
                     embed=embed,
@@ -407,9 +383,7 @@ class ZinuteModal(
                         roles=True
                     )
                 )
-
             else:
-
                 await interaction.channel.send(
                     embed=embed
                 )
@@ -420,7 +394,6 @@ class ZinuteModal(
             )
 
         except discord.Forbidden:
-
             await interaction.response.send_message(
                 "❌ Botas neturi teisės siųsti žinutės.",
                 ephemeral=True
@@ -434,7 +407,6 @@ class ZinuteModal(
 async def zinute(
     interaction: discord.Interaction
 ):
-
     if not isinstance(
         interaction.user,
         discord.Member
@@ -444,12 +416,10 @@ async def zinute(
     if not turi_specialia_role(
         interaction.user
     ):
-
         await interaction.response.send_message(
             "❌ Neturi reikiamos specialios rolės.",
             ephemeral=True
         )
-
         return
 
     await interaction.response.send_modal(
@@ -462,7 +432,6 @@ async def zinute(
 # =========================================================
 
 async def setup_verification_message():
-
     global verification_message_id
 
     channel = bot.get_channel(
@@ -470,19 +439,15 @@ async def setup_verification_message():
     )
 
     if channel is None:
-
         print(
             "❌ Nerastas verifikacijos kanalas."
         )
-
         return
 
     try:
-
         async for message in channel.history(
             limit=100
         ):
-
             if message.author != bot.user:
                 continue
 
@@ -493,38 +458,31 @@ async def setup_verification_message():
                 message.embeds[0].title
                 == "✅ Serverio verifikacija"
             ):
-
                 verification_message_id = message.id
 
-                has_reaction = any(
+                has_check = any(
                     str(reaction.emoji) == "✅"
                     for reaction in message.reactions
                 )
 
-                if not has_reaction:
-
+                if not has_check:
                     try:
-
                         await message.add_reaction(
                             "✅"
                         )
-
                     except discord.HTTPException:
                         pass
 
                 print(
                     "✅ Verifikacijos žinutė jau egzistuoja."
                 )
-
                 return
 
     except discord.Forbidden:
-
         print(
             "❌ Botas negali skaityti "
             "verifikacijos kanalo."
         )
-
         return
 
     embed = discord.Embed(
@@ -544,7 +502,6 @@ async def setup_verification_message():
     )
 
     try:
-
         message = await channel.send(
             embed=embed
         )
@@ -560,10 +517,8 @@ async def setup_verification_message():
         )
 
     except discord.Forbidden:
-
         print(
-            "❌ Botas neturi teisių "
-            "verifikacijos kanale."
+            "❌ Botas neturi teisių verifikacijos kanale."
         )
 
 
@@ -571,7 +526,6 @@ async def setup_verification_message():
 async def verification_reaction(
     payload: discord.RawReactionActionEvent
 ):
-
     if (
         bot.user
         and payload.user_id == bot.user.id
@@ -606,13 +560,10 @@ async def verification_reaction(
     )
 
     if member is None:
-
         try:
-
             member = await guild.fetch_member(
                 payload.user_id
             )
-
         except discord.HTTPException:
             return
 
@@ -621,44 +572,36 @@ async def verification_reaction(
     )
 
     if role is None:
-
         print(
             "❌ Nerasta verifikacijos rolė."
         )
-
         return
 
     if guild.me is None:
         return
 
     if role >= guild.me.top_role:
-
         print(
-            "❌ Verifikacijos rolė turi būti "
-            "žemiau boto rolės."
+            "❌ Verifikacijos rolė turi būti žemiau boto rolės."
         )
-
         return
 
     if role in member.roles:
         return
 
     try:
-
         await member.add_roles(
             role,
             reason="Serverio verifikacija"
         )
 
         print(
-            f"✅ Verifikuotas: {member}"
+            f"✅ {member} gavo verifikacijos rolę."
         )
 
     except discord.Forbidden:
-
         print(
-            "❌ Botas negali uždėti "
-            "verifikacijos rolės."
+            "❌ Botas negali uždėti verifikacijos rolės."
         )
 
 
@@ -669,7 +612,6 @@ async def verification_reaction(
 def yra_ticket_kanalas(
     channel: discord.TextChannel
 ) -> bool:
-
     return bool(
         channel.topic
         and channel.topic.startswith(
@@ -681,7 +623,6 @@ def yra_ticket_kanalas(
 def gauti_ticket_owner_id(
     channel: discord.TextChannel
 ):
-
     if not channel.topic:
         return None
 
@@ -699,7 +640,6 @@ def gauti_ticket_owner_id(
 def gauti_claimed_id(
     channel: discord.TextChannel
 ) -> int:
-
     if not channel.topic:
         return 0
 
@@ -718,17 +658,14 @@ async def rasti_esama_ticketa(
     guild: discord.Guild,
     member: discord.Member
 ):
-
     for channel in guild.text_channels:
-
         if not yra_ticket_kanalas(channel):
             continue
 
-        owner_id = gauti_ticket_owner_id(
-            channel
-        )
-
-        if owner_id == member.id:
+        if (
+            gauti_ticket_owner_id(channel)
+            == member.id
+        ):
             return channel
 
     return None
@@ -737,7 +674,6 @@ async def rasti_esama_ticketa(
 async def gauti_ticket_kategorija(
     guild: discord.Guild
 ):
-
     category = discord.utils.get(
         guild.categories,
         name=TICKET_CATEGORY_NAME
@@ -747,34 +683,23 @@ async def gauti_ticket_kategorija(
         return category
 
     try:
-
         return await guild.create_category(
             TICKET_CATEGORY_NAME,
             reason="Ticketų sistemos kategorija"
         )
-
     except discord.Forbidden:
-
         return None
-
     except discord.HTTPException as error:
-
         print(
             f"❌ Kategorijos klaida: {error}"
         )
-
         return None
 
 
 def suformuoti_ticket_varda(
     member: discord.Member
 ) -> str:
-
-    name = (
-        member.display_name
-        .lower()
-        .strip()
-    )
+    name = member.display_name.lower().strip()
 
     name = re.sub(
         r"\s+",
@@ -809,9 +734,7 @@ def suformuoti_ticket_varda(
 class TicketPanelView(
     discord.ui.View
 ):
-
     def __init__(self):
-
         super().__init__(
             timeout=None
         )
@@ -827,7 +750,6 @@ class TicketPanelView(
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-
         guild = interaction.guild
 
         if guild is None:
@@ -847,13 +769,11 @@ class TicketPanelView(
         )
 
         if existing:
-
             await interaction.response.send_message(
-                f"❌ Tu jau turi atidarytą ticketą: "
+                f"❌ Tu jau turi ticketą: "
                 f"{existing.mention}",
                 ephemeral=True
             )
-
             return
 
         await interaction.response.send_modal(
@@ -868,9 +788,7 @@ class TicketPanelView(
 class TicketCreateModal(
     discord.ui.Modal
 ):
-
     def __init__(self):
-
         super().__init__(
             title="🎫 Sukurti ticketą"
         )
@@ -884,7 +802,7 @@ class TicketCreateModal(
 
     aprasymas = discord.ui.TextInput(
         label="Aprašymas",
-        placeholder="Aprašyk problemą ar klausimą...",
+        placeholder="Aprašyk savo problemą ar klausimą...",
         required=True,
         style=discord.TextStyle.paragraph,
         max_length=2000
@@ -894,7 +812,6 @@ class TicketCreateModal(
         self,
         interaction: discord.Interaction
     ):
-
         guild = interaction.guild
         member = interaction.user
 
@@ -913,13 +830,11 @@ class TicketCreateModal(
         )
 
         if existing:
-
             await interaction.response.send_message(
                 f"❌ Tu jau turi ticketą: "
                 f"{existing.mention}",
                 ephemeral=True
             )
-
             return
 
         support_role = guild.get_role(
@@ -927,12 +842,10 @@ class TicketCreateModal(
         )
 
         if support_role is None:
-
             await interaction.response.send_message(
                 "❌ Nerasta support rolė.",
                 ephemeral=True
             )
-
             return
 
         category = await gauti_ticket_kategorija(
@@ -940,18 +853,11 @@ class TicketCreateModal(
         )
 
         if category is None:
-
             await interaction.response.send_message(
-                "❌ Nepavyko sukurti ticket kategorijos.\n"
-                "Botui reikia **Manage Channels**.",
+                "❌ Nepavyko sukurti ticket kategorijos.",
                 ephemeral=True
             )
-
             return
-
-        # -------------------------------------------------
-        # TICKET PAVADINIMAS
-        # -------------------------------------------------
 
         channel_name = suformuoti_ticket_varda(
             member
@@ -975,10 +881,6 @@ class TicketCreateModal(
             )
 
             counter += 1
-
-        # -------------------------------------------------
-        # LEIDIMAI
-        # -------------------------------------------------
 
         overwrites = {
 
@@ -1017,38 +919,26 @@ class TicketCreateModal(
                 )
         }
 
-        # -------------------------------------------------
-        # KURIAM KANALĄ
-        # -------------------------------------------------
-
         try:
-
-            ticket_channel = (
-                await guild.create_text_channel(
-                    channel_name,
-                    category=category,
-                    overwrites=overwrites,
-                    topic=(
-                        f"ticket_owner:{member.id}"
-                        f"|claimed:0"
-                    ),
-                    reason=(
-                        f"Ticket sukūrė {member}"
-                    )
-                )
+            ticket_channel = await guild.create_text_channel(
+                channel_name,
+                category=category,
+                overwrites=overwrites,
+                topic=(
+                    f"ticket_owner:{member.id}"
+                    f"|claimed:0"
+                ),
+                reason=f"Ticket sukūrė {member}"
             )
 
         except discord.Forbidden:
-
             await interaction.response.send_message(
                 "❌ Botui trūksta **Manage Channels** teisės.",
                 ephemeral=True
             )
-
             return
 
         except discord.HTTPException as error:
-
             print(
                 f"❌ Ticket kūrimo klaida: {error}"
             )
@@ -1059,10 +949,6 @@ class TicketCreateModal(
             )
 
             return
-
-        # -------------------------------------------------
-        # TICKET EMBED
-        # -------------------------------------------------
 
         embed = discord.Embed(
             title="🎫 Ticketas sukurtas",
@@ -1103,12 +989,7 @@ class TicketCreateModal(
             text="PurityRP • Ticketų sistema"
         )
 
-        # -------------------------------------------------
-        # SIUNČIAM TICKET ŽINUTĘ
-        # -------------------------------------------------
-
         try:
-
             await ticket_channel.send(
                 content=(
                     f"{member.mention} "
@@ -1122,14 +1003,9 @@ class TicketCreateModal(
         except discord.Forbidden:
 
             try:
-
                 await ticket_channel.delete(
-                    reason=(
-                        "Nepavyko išsiųsti "
-                        "ticket žinutės"
-                    )
+                    reason="Nepavyko išsiųsti ticket žinutės"
                 )
-
             except discord.HTTPException:
                 pass
 
@@ -1154,9 +1030,7 @@ class TicketCreateModal(
 class TicketControlView(
     discord.ui.View
 ):
-
     def __init__(self):
-
         super().__init__(
             timeout=None
         )
@@ -1176,7 +1050,6 @@ class TicketControlView(
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-
         member = interaction.user
         channel = interaction.channel
 
@@ -1195,24 +1068,19 @@ class TicketControlView(
         if not turi_support_role(
             member
         ):
-
             await interaction.response.send_message(
-                "❌ Tik support komanda gali "
-                "apsiimti ticketą.",
+                "❌ Tik support komanda gali apsiimti ticketą.",
                 ephemeral=True
             )
-
             return
 
         if not yra_ticket_kanalas(
             channel
         ):
-
             await interaction.response.send_message(
                 "❌ Tai nėra ticket kanalas.",
                 ephemeral=True
             )
-
             return
 
         claimed_id = gauti_claimed_id(
@@ -1238,8 +1106,7 @@ class TicketControlView(
             else:
 
                 await interaction.response.send_message(
-                    "❌ Šį ticketą jau apsiėmė "
-                    "kitas darbuotojas.",
+                    "❌ Šį ticketą jau apsiėmė kitas darbuotojas.",
                     ephemeral=True
                 )
 
@@ -1250,7 +1117,6 @@ class TicketControlView(
         )
 
         try:
-
             await channel.edit(
                 topic=(
                     f"ticket_owner:{owner_id}"
@@ -1259,38 +1125,30 @@ class TicketControlView(
             )
 
         except discord.HTTPException:
-
             await interaction.response.send_message(
                 "❌ Nepavyko apsiimti ticketo.",
                 ephemeral=True
             )
-
             return
 
         button.disabled = True
 
         try:
-
             await interaction.response.edit_message(
                 view=self
             )
-
         except discord.NotFound:
             pass
-
         except discord.HTTPException:
             pass
 
         try:
-
             await channel.send(
                 f"🛠️ Šį ticketą apsiėmė "
                 f"{member.mention}."
             )
-
         except discord.HTTPException:
             pass
-
 
     # -----------------------------------------------------
     # UŽDARYTI
@@ -1307,7 +1165,6 @@ class TicketControlView(
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-
         member = interaction.user
         channel = interaction.channel
 
@@ -1326,12 +1183,10 @@ class TicketControlView(
         if not yra_ticket_kanalas(
             channel
         ):
-
             await interaction.response.send_message(
                 "❌ Tai nėra ticket kanalas.",
                 ephemeral=True
             )
-
             return
 
         owner_id = gauti_ticket_owner_id(
@@ -1342,13 +1197,11 @@ class TicketControlView(
             member.id != owner_id
             and not turi_support_role(member)
         ):
-
             await interaction.response.send_message(
-                "❌ Ticketą gali uždaryti tik "
-                "jo autorius arba support komanda.",
+                "❌ Ticketą gali uždaryti tik jo autorius "
+                "arba support komanda.",
                 ephemeral=True
             )
-
             return
 
         await interaction.response.send_message(
@@ -1363,15 +1216,13 @@ class TicketControlView(
 
 
 # =========================================================
-# UŽDARYMO PATVIRTINIMAS
+# TICKET UŽDARYMO PATVIRTINIMAS
 # =========================================================
 
 class CloseConfirmationView(
     discord.ui.View
 ):
-
     def __init__(self):
-
         super().__init__(
             timeout=30
         )
@@ -1386,7 +1237,6 @@ class CloseConfirmationView(
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-
         channel = interaction.channel
 
         if not isinstance(
@@ -1409,12 +1259,8 @@ class CloseConfirmationView(
         await asyncio.sleep(10)
 
         try:
-
             await channel.delete(
-                reason=(
-                    f"Ticket uždarė "
-                    f"{interaction.user}"
-                )
+                reason=f"Ticket uždarė {interaction.user}"
             )
 
             print(
@@ -1422,23 +1268,19 @@ class CloseConfirmationView(
             )
 
         except discord.NotFound:
-
             print(
                 "ℹ️ Ticket kanalas jau buvo ištrintas."
             )
 
         except discord.Forbidden:
-
             print(
                 "❌ Botas neturi Manage Channels teisės."
             )
 
         except discord.HTTPException as error:
-
             print(
                 f"❌ Ticket trynimo klaida: {error}"
             )
-
 
     @discord.ui.button(
         label="Atšaukti",
@@ -1450,11 +1292,8 @@ class CloseConfirmationView(
         interaction: discord.Interaction,
         button: discord.ui.Button
     ):
-
         await interaction.response.edit_message(
-            content=(
-                "✅ **Ticketo uždarymas atšauktas.**"
-            ),
+            content="✅ **Ticketo uždarymas atšauktas.**",
             view=None
         )
 
@@ -1462,7 +1301,7 @@ class CloseConfirmationView(
 
 
 # =========================================================
-# TICKET PANELĖS SUKŪRIMAS
+# TICKET PANELĖS KŪRIMAS
 # =========================================================
 
 async def setup_ticket_panel():
@@ -1472,19 +1311,15 @@ async def setup_ticket_panel():
     )
 
     if channel is None:
-
         print(
             "❌ Nerastas ticket panelės kanalas."
         )
-
         return
 
     try:
-
         async for message in channel.history(
             limit=100
         ):
-
             if message.author != bot.user:
                 continue
 
@@ -1495,20 +1330,15 @@ async def setup_ticket_panel():
                 message.embeds[0].title
                 == "🎫 Reikia pagalbos?"
             ):
-
                 print(
                     "✅ Ticket panelė jau egzistuoja."
                 )
-
                 return
 
     except discord.Forbidden:
-
         print(
-            "❌ Botas negali skaityti "
-            "ticket panelės kanalo."
+            "❌ Botas negali skaityti ticket panelės kanalo."
         )
-
         return
 
     embed = discord.Embed(
@@ -1523,8 +1353,7 @@ async def setup_ticket_panel():
             "2️⃣ Užpildykite atsiradusią lentelę\n"
             "3️⃣ Bus sukurtas privatus kanalas\n"
             "4️⃣ Palaukite pagalbos komandos\n\n"
-            "🔒 Ticketą matys tik jūs ir "
-            "pagalbos komanda."
+            "🔒 Ticketą matys tik jūs ir pagalbos komanda."
         ),
         color=discord.Color.blurple()
     )
@@ -1540,7 +1369,6 @@ async def setup_ticket_panel():
     )
 
     try:
-
         await channel.send(
             embed=embed,
             view=TicketPanelView()
@@ -1551,10 +1379,8 @@ async def setup_ticket_panel():
         )
 
     except discord.Forbidden:
-
         print(
-            "❌ Botas negali siųsti "
-            "ticket panelės."
+            "❌ Botas negali siųsti ticket panelės."
         )
 
 
@@ -1565,41 +1391,35 @@ async def setup_ticket_panel():
 def load_contests():
 
     try:
-
         with open(
             CONTESTS_FILE,
             "r",
             encoding="utf-8"
         ) as file:
-
             return json.load(file)
 
     except FileNotFoundError:
-
         return {}
 
     except json.JSONDecodeError:
-
         print(
             "⚠️ konkursai.json sugadintas. "
             "Pradedama nuo tuščio sąrašo."
         )
-
         return {}
 
     except Exception as error:
-
         print(
             f"❌ Konkursų įkėlimo klaida: {error}"
         )
-
         return {}
 
 
-def save_contests(data):
+def save_contests(
+    data
+):
 
     try:
-
         with open(
             CONTESTS_FILE,
             "w",
@@ -1614,7 +1434,6 @@ def save_contests(data):
             )
 
     except Exception as error:
-
         print(
             f"❌ Konkursų išsaugojimo klaida: {error}"
         )
@@ -1630,7 +1449,6 @@ contests = load_contests()
 def parse_contest_time(
     text: str
 ):
-
     text = text.strip()
 
     formats = [
@@ -1643,19 +1461,22 @@ def parse_contest_time(
     for date_format in formats:
 
         try:
-
             parsed = datetime.strptime(
                 text,
                 date_format
             )
 
-            # Naudojamas kompiuterio vietinis laikas
-            return parsed.astimezone(
-                datetime.now().astimezone().tzinfo
+            # Įrašytas laikas laikomas Lietuvos laiku:
+            # UTC+3 vasaros metu.
+            # Kadangi botas dabar kuriamas 2026 m. vasarai,
+            # tai atitinka dabartinį Lietuvos laiką.
+            return parsed.replace(
+                tzinfo=timezone(
+                    timedelta(hours=3)
+                )
             )
 
         except ValueError:
-
             continue
 
     return None
@@ -1679,21 +1500,18 @@ def create_contest_embed(
     )
 
     if ended:
-
-        title = f"🏁 {data['title']} – BAIGĖSI"
-        color = discord.Color.gold()
-        status_text = "🔴 Baigėsi"
-
+        title = (
+            f"🏁 {data['title']} – BAIGĖSI"
+        )
+        status = "🔴 Baigėsi"
     else:
-
         title = f"🎉 {data['title']}"
-        color = discord.Color.gold()
-        status_text = "🟢 Vyksta"
+        status = "🟢 Vyksta"
 
     embed = discord.Embed(
         title=title,
         description=data["description"],
-        color=color
+        color=discord.Color.gold()
     )
 
     embed.add_field(
@@ -1712,7 +1530,6 @@ def create_contest_embed(
     )
 
     if not ended:
-
         embed.add_field(
             name="🎟️ Kaip dalyvauti?",
             value=(
@@ -1738,7 +1555,7 @@ def create_contest_embed(
 
     embed.add_field(
         name="📌 Statusas",
-        value=status_text,
+        value=status,
         inline=True
     )
 
@@ -1758,7 +1575,6 @@ class ContestModal(
 ):
 
     def __init__(self):
-
         super().__init__(
             title="🎉 Sukurti konkursą"
         )
@@ -1803,7 +1619,6 @@ class ContestModal(
         )
 
         if end_time is None:
-
             await interaction.response.send_message(
                 (
                     "❌ Neteisingas datos formatas.\n\n"
@@ -1814,7 +1629,6 @@ class ContestModal(
                 ),
                 ephemeral=True
             )
-
             return
 
         now = datetime.now(
@@ -1822,12 +1636,10 @@ class ContestModal(
         )
 
         if end_time <= now:
-
             await interaction.response.send_message(
                 "❌ Konkurso pabaiga turi būti ateityje.",
                 ephemeral=True
             )
-
             return
 
         contest_data = {
@@ -1848,7 +1660,6 @@ class ContestModal(
         )
 
         try:
-
             message = await interaction.channel.send(
                 embed=embed
             )
@@ -1858,18 +1669,15 @@ class ContestModal(
             )
 
         except discord.Forbidden:
-
             await interaction.response.send_message(
                 "❌ Botas neturi teisių šiame kanale.",
                 ephemeral=True
             )
-
             return
 
         except discord.HTTPException as error:
-
             print(
-                f"❌ Konkurso sukūrimo klaida: {error}"
+                f"❌ Konkurso kūrimo klaida: {error}"
             )
 
             await interaction.response.send_message(
@@ -1906,7 +1714,6 @@ async def konkursas(
 ):
 
     if interaction.channel_id != CONTEST_CHANNEL_ID:
-
         await interaction.response.send_message(
             (
                 "❌ Šią komandą galima naudoti tik "
@@ -1914,7 +1721,6 @@ async def konkursas(
             ),
             ephemeral=True
         )
-
         return
 
     if not isinstance(
@@ -1927,12 +1733,10 @@ async def konkursas(
         interaction.user,
         CONTEST_ROLE_ID
     ):
-
         await interaction.response.send_message(
             "❌ Neturi reikiamos rolės konkursams.",
             ephemeral=True
         )
-
         return
 
     await interaction.response.send_modal(
@@ -1941,7 +1745,7 @@ async def konkursas(
 
 
 # =========================================================
-# KONKURSO REAKCIJA
+# KONKURSO DALYVAVIMAS
 # =========================================================
 
 @bot.listen("on_raw_reaction_add")
@@ -1985,12 +1789,11 @@ async def contest_reaction_add(
         )
 
         try:
-
             channel = bot.get_channel(
                 CONTEST_CHANNEL_ID
             )
 
-            if channel:
+            if channel is not None:
 
                 message = await channel.fetch_message(
                     payload.message_id
@@ -2005,10 +1808,6 @@ async def contest_reaction_add(
         except discord.HTTPException:
             pass
 
-
-# =========================================================
-# KONKURSO REAKCIJOS PAŠALINIMAS
-# =========================================================
 
 @bot.listen("on_raw_reaction_remove")
 async def contest_reaction_remove(
@@ -2045,12 +1844,11 @@ async def contest_reaction_remove(
         )
 
         try:
-
             channel = bot.get_channel(
                 CONTEST_CHANNEL_ID
             )
 
-            if channel:
+            if channel is not None:
 
                 message = await channel.fetch_message(
                     payload.message_id
@@ -2067,7 +1865,7 @@ async def contest_reaction_remove(
 
 
 # =========================================================
-# KONKURSO UŽDARYMAS
+# KONKURSO PABAIGA
 # =========================================================
 
 async def finish_contest(
@@ -2104,15 +1902,11 @@ async def finish_contest(
         )
 
         if member is None:
-
             try:
-
                 member = await guild.fetch_member(
                     user_id
                 )
-
             except discord.HTTPException:
-
                 continue
 
         if member.bot:
@@ -2137,7 +1931,6 @@ async def finish_contest(
         )
 
         try:
-
             original_message = (
                 await channel.fetch_message(
                     int(contest_id)
@@ -2193,11 +1986,10 @@ async def finish_contest(
     )
 
     # -----------------------------------------------------
-    # ATNAUJINAM ORIGINALIĄ KONKURSO ŽINUTĘ
+    # ORIGINALI KONKURSO ŽINUTĖ
     # -----------------------------------------------------
 
     try:
-
         original_message = (
             await channel.fetch_message(
                 int(contest_id)
@@ -2246,7 +2038,6 @@ async def finish_contest(
     )
 
     try:
-
         await channel.send(
             content=winner.mention,
             embed=winner_embed,
@@ -2256,12 +2047,11 @@ async def finish_contest(
         )
 
     except discord.HTTPException:
-
         pass
 
 
 # =========================================================
-# KONKURSŲ TIKRINIMAS
+# KONKURSŲ CHECKER
 # =========================================================
 
 async def contest_checker():
@@ -2270,7 +2060,9 @@ async def contest_checker():
 
     while not bot.is_closed():
 
-        now = datetime.now().astimezone()
+        now = datetime.now(
+            timezone.utc
+        )
 
         changed = False
 
@@ -2282,7 +2074,6 @@ async def contest_checker():
                 continue
 
             try:
-
                 end_time = datetime.fromisoformat(
                     contest["end_time"]
                 )
@@ -2292,12 +2083,21 @@ async def contest_checker():
                 KeyError,
                 TypeError
             ):
-
                 contest["ended"] = True
                 changed = True
                 continue
 
-            if now >= end_time:
+            # Palyginimui konvertuojame į UTC
+            if end_time.tzinfo is not None:
+                end_time_utc = end_time.astimezone(
+                    timezone.utc
+                )
+            else:
+                end_time_utc = end_time.replace(
+                    tzinfo=timezone.utc
+                )
+
+            if now >= end_time_utc:
 
                 await finish_contest(
                     contest_id,
@@ -2307,7 +2107,6 @@ async def contest_checker():
                 changed = True
 
         if changed:
-
             save_contests(
                 contests
             )
@@ -2323,6 +2122,7 @@ async def contest_checker():
 async def on_ready():
 
     global startup_done
+    global contest_task_started
 
     if startup_done:
         return
@@ -2342,7 +2142,7 @@ async def on_ready():
     print("=" * 60)
 
     # -----------------------------------------------------
-    # PERSISTENT TICKET MYGTUKAI
+    # TICKET MYGTUKAI
     # -----------------------------------------------------
 
     bot.add_view(
@@ -2365,8 +2165,6 @@ async def on_ready():
 
     try:
 
-        # Komandas iš karto užregistruojame visuose
-        # botui prieinamuose serveriuose.
         for guild in bot.guilds:
 
             bot.tree.copy_global_to(
@@ -2389,8 +2187,7 @@ async def on_ready():
     except Exception as error:
 
         print(
-            f"❌ Slash komandų sinchronizavimo klaida: "
-            f"{error}"
+            f"❌ Slash komandų klaida: {error}"
         )
 
     # -----------------------------------------------------
@@ -2406,19 +2203,23 @@ async def on_ready():
     await setup_ticket_panel()
 
     # -----------------------------------------------------
-    # KONKURSŲ CHECKER
+    # KONKURSAI
     # -----------------------------------------------------
 
-    asyncio.create_task(
-        contest_checker()
-    )
+    if not contest_task_started:
+
+        contest_task_started = True
+
+        asyncio.create_task(
+            contest_checker()
+        )
+
+        print(
+            "✅ Konkursų sistema paleista."
+        )
 
     print(
-        "✅ Konkursų sistema paleista."
-    )
-
-    print(
-        "✅ Visos boto sistemos paleistos."
+        "✅ VISOS SISTEMOS PALEISTOS!"
     )
 
     print("=" * 60)
@@ -2427,5 +2228,12 @@ async def on_ready():
 # =========================================================
 # PALEIDIMAS
 # =========================================================
+
+if not TOKEN or TOKEN.startswith(
+    "ĮKLIJUOK_"
+):
+    raise ValueError(
+        "❌ Į bot.py įrašyk naują Discord boto Tokeną."
+    )
 
 bot.run(TOKEN)
