@@ -11,8 +11,11 @@ from discord import app_commands
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
+print("TOKEN EXISTUOJA:", bool(TOKEN))
+print("TOKEN ILGIS:", len(TOKEN) if TOKEN else 0)
+
 if not TOKEN:
-    raise ValueError("DISCORD_TOKEN nerastas Railway Variables skiltyje!")
+    raise ValueError("DISCORD_TOKEN nerastas!")
 
 
 # =========================================================
